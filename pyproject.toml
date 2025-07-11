@@ -1,0 +1,13 @@
+[project]
+name            = "energy-app"
+version         = "0.1.0"
+description     = "Multi-page Streamlit energy-forecast suite"
+requires-python = ">=3.10"
+
+[build-system]
+requires    = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# only include your app package and its subpackages
+include = ["energy_app", "energy_app.*"]

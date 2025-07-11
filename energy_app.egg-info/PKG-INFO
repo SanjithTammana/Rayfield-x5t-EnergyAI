@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: energy-app
+Version: 0.1.0
+Summary: Multi-page Streamlit energy-forecast suite
+Requires-Python: >=3.10
