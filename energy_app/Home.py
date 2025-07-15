@@ -4,9 +4,11 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import importlib.util, sys
-import os
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# Ensure root directory is on sys.path
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 def load_page_module(path: Path):
     """Dynamically load a .py as a module."""
