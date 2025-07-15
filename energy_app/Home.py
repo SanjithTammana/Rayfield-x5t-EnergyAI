@@ -34,21 +34,21 @@ st.set_page_config(page_title="EnergyAI", layout="wide")
 st.title("⚡ EnergyAI")
 st.markdown(
     """
-- **Broader workflows**: upload an energy‐consumption CSV, then Visualise & Forecast.  
-- **Localized workflows**: run the all-in-one inverter/efficiency/anomaly app.
+- **Broader_workflows**: upload an energy‐consumption CSV, then Visualise & Forecast.  
+- **Localized_workflows**: run the all-in-one inverter/efficiency/anomaly app.
 """
 )
 
 st.sidebar.title("🔍 Select Workflow")
 workflow = st.sidebar.radio(
     "Workflow Type",
-    ["Broader workflows", "Localized workflows"],
+    ["Broader_workflows", "Localized_workflows"],
     key="workflow_selector"
 )
 
 BASE = Path(__file__).parent  # energy_app/
 
-if workflow == "Broader workflows":
+if workflow == "Broader_workflows":
     uploaded = st.sidebar.file_uploader("Upload energy CSV", type="csv", key="csv_uploader")
     if uploaded:
         try:
@@ -64,7 +64,7 @@ if workflow == "Broader workflows":
     page = st.sidebar.radio("Page", ["Visualise", "Forecast"], key="page_selector")
     if page == "Visualise":
         mod = load_page_module(
-            BASE / "pages" / "Broader workflows" / "1_Visualise.py"
+            BASE / "pages" / "Broader_workflows" / "1_Visualise.py"
         )
         try:
             mod.show_visualise(df)
@@ -73,7 +73,7 @@ if workflow == "Broader workflows":
             show_basic_visualise(df)
     else:
         mod = load_page_module(
-            BASE / "pages" / "Broader workflows" / "2_Forecast.py"
+            BASE / "pages" / "Broader_workflows" / "2_Forecast.py"
         )
         try:
             mod.show_forecast(df)
@@ -81,10 +81,10 @@ if workflow == "Broader workflows":
             st.error("⚠️ Forecast failed—showing fallback.")
             show_basic_forecast(df)
 
-else:  # Localized workflows
+else:  # Localized_workflows
     # Always load & run your one-file localized app (no fallback)
     mod = load_page_module(
-        BASE / "pages" / "Localized workflows" / "streamlit_app.py"
+        BASE / "pages" / "Localized_workflows" / "streamlit_app.py"
     )
     # show_localized() contains its own uploader and tabs
     mod.show_localized()

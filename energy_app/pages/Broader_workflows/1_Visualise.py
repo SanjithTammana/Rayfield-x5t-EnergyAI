@@ -1,4 +1,4 @@
-# energy_app/pages/Broader workflows/1_Visualise.py
+# energy_app/pages/Broader_workflows/1_Visualise.py
 import streamlit as st
 from energy_app.components.charts import line
 

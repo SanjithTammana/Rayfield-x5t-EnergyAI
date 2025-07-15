@@ -1,4 +1,4 @@
-# energy_app/pages/Broader workflows/2_Forecast.py
+# energy_app/pages/Broader_workflows/2_Forecast.py
 import streamlit as st
 from energy_app.utils.predictors import forecast
 from energy_app.utils.summariser import summarise
