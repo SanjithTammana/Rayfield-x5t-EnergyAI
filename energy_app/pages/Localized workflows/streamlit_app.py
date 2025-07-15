@@ -1,5 +1,3 @@
-# energy_app/pages/Localized workflows/streamlit_app.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -34,7 +32,7 @@ def preprocess_inverter_data(df: pd.DataFrame) -> pd.DataFrame:
     # ensure numeric
     df['AC_POWER_OUTPUT'] = pd.to_numeric(df['AC_POWER_OUTPUT'], errors='coerce')
     df['DC_POWER_INPUT']  = pd.to_numeric(df['DC_POWER_INPUT'],  errors='coerce')
-    df['AC_POWER_FIXED']  = pd.to_numeric(df['AC_POWER_OUTPUT'] * 10,  errors='coerce')
+    df['AC_POWER_FIXED']  = df['AC_POWER_OUTPUT'] * 10
     df['EFFICIENCY']      = df['AC_POWER_FIXED'] / df['DC_POWER_INPUT']
     df['EFFICIENCY_%']    = df['EFFICIENCY'] * 100
     df['Value']           = df['AC_POWER_FIXED']
@@ -100,8 +98,8 @@ def load_clean_data(file) -> pd.DataFrame:
 
 # ---------- Anomaly Detection ----------
 def detect_anomalies(df: pd.DataFrame) -> pd.DataFrame:
-    model = IsolationForest(contamination=0.01, random_state=42)
     df = df.copy()
+    model = IsolationForest(contamination=0.01, random_state=42)
     df["anomaly"] = model.fit_predict(df[["Value"]]) == -1
     return df
 
@@ -159,13 +157,14 @@ def export_alerts(df: pd.DataFrame):
     else:
         st.info("No new anomalies today.")
 
-# ---------- Groupings Summary ----------
+# ---------- Groupings & Summary ----------
 def grouping_data_with_summary(df: pd.DataFrame):
     df_eff = df[df["EFFICIENCY_%"].between(0.01,100)].copy()
 
     res = (
         df_eff
-        .groupby("SOURCE_ID")["AC_POWER_FIXED"]
+        .groupby("SOURCE_ID")
+        ["AC_POWER_FIXED"]
         .mean()
         .reset_index(name="avg_output")
     )
@@ -181,7 +180,7 @@ def grouping_data_with_summary(df: pd.DataFrame):
         "High (4th Quartile)":     len(high),
         "Med-High (3rd Quartile)": len(med_high),
         "Med-Low (2nd Quartile)":  len(med_low),
-        "Low (1st Quartile)":      len(low),
+        "Low (1st Quartile)":      len(low)
     }
     if len(low)>0:
         summary["⚠️ Low-performers need review"] = len(low)
@@ -193,61 +192,67 @@ def grouping_data_with_summary(df: pd.DataFrame):
 
     return high, med_high, med_low, low, summary
 
-# ---------- Efficiency Anomaly Plot ----------
+# ---------- Plotly Efficiency Anomaly ----------
 def anomaly_detect(df: pd.DataFrame) -> go.Figure:
-    invs = df["SOURCE_ID"].unique()
+    df_clean = df[df['EFFICIENCY_%'] > 0].copy()
+    df_clean['TIME_STAMP'] = pd.to_datetime(df_clean['TIME_STAMP'])
+    df_clean = df_clean.sort_values(['SOURCE_ID', 'TIME_STAMP'])
+
+    full_range = pd.date_range(
+        start=df_clean['TIME_STAMP'].min(),
+        end=df_clean['TIME_STAMP'].max(),
+        freq='15T'
+    )
     all_data = []
-    for inv in invs:
-        # resample only numeric columns
-        sub_num = (
-            df[df["SOURCE_ID"]==inv]
-            .set_index("TIME_STAMP")
-            .select_dtypes(include=[np.number])
-            .resample("15T")
-            .mean()
-            .ffill()
-        )
-        sub_num["SOURCE_ID"] = inv
-        sub_num["anomaly"] = False
-        if len(sub_num)>10:
-            iso = IsolationForest(contamination=0.01, random_state=42)
-            sub_num["anomaly"] = iso.fit_predict(sub_num[["EFFICIENCY_%"]]) == -1
+    inverter_list = sorted(df_clean['SOURCE_ID'].unique())
 
-        all_data.append(sub_num.reset_index())
+    for inv in inverter_list:
+        inv_df = df_clean[df_clean['SOURCE_ID'] == inv].copy()
+        inv_df = inv_df.set_index('TIME_STAMP').reindex(full_range)
+        inv_df['SOURCE_ID'] = inv
+        inv_df = inv_df.rename_axis('TIME_STAMP').reset_index()
 
-    final = pd.concat(all_data, ignore_index=True)
+        inv_df['anomaly'] = False
+        mask = inv_df['EFFICIENCY_%'] > 0
+        if mask.sum() > 10:
+            model = IsolationForest(contamination=0.01, random_state=42)
+            inv_df.loc[mask, 'anomaly'] = model.fit_predict(inv_df.loc[mask, ['EFFICIENCY_%']]) == -1
+
+        all_data.append(inv_df)
+
+    final_df = pd.concat(all_data)
+    final_df['Status'] = final_df['anomaly'].map({True: 'Anomaly', False: 'Normal'})
 
     fig = go.Figure()
-    buttons = []
-    for i, inv in enumerate(invs):
-        vis = [False] * (2*len(invs))
-        vis[2*i]   = True
+    dropdowns = []
+    for i, inv in enumerate(inverter_list):
+        temp = final_df[final_df['SOURCE_ID'] == inv]
+        fig.add_trace(go.Scatter(
+            x=temp['TIME_STAMP'],
+            y=temp['EFFICIENCY_%'],
+            mode='lines', name=f'{inv} Efficiency', visible=(i == 0)
+        ))
+        fig.add_trace(go.Scatter(
+            x=temp[temp['anomaly']]['TIME_STAMP'],
+            y=temp[temp['anomaly']]['EFFICIENCY_%'],
+            mode='markers', name=f'{inv} Anomaly', visible=(i == 0), marker=dict(color='red', size=6)
+        ))
+        vis = [False] * (2 * len(inverter_list))
+        vis[2*i] = True
         vis[2*i+1] = True
-
-        temp = final[final["SOURCE_ID"]==inv]
-        fig.add_trace(go.Scatter(
-            x=temp["TIME_STAMP"], y=temp["EFFICIENCY_%"],
-            mode="lines", name=f"{inv} Efficiency",
-            visible=vis[2*i]
-        ))
-        fig.add_trace(go.Scatter(
-            x=temp[temp["anomaly"]]["TIME_STAMP"],
-            y=temp[temp["anomaly"]]["EFFICIENCY_%"],
-            mode="markers", name=f"{inv} Anomalies",
-            visible=vis[2*i+1], marker=dict(color="red",size=6)
-        ))
-
-        buttons.append({
-            "label": inv,
-            "method": "update",
-            "args": [{"visible": vis}, {"title": f"{inv} Efficiency"}]
+        dropdowns.append({
+            'label': inv,
+            'method': 'update',
+            'args': [{'visible': vis}, {'title': f'Efficiency for {inv}'}]
         })
 
     fig.update_layout(
-        updatemenus=[dict(active=0, buttons=buttons, x=1.1, y=1.15)],
-        title=f"{invs[0]} Efficiency",
-        xaxis_title="Time",
-        yaxis_title="EFFICIENCY_%"
+        updatemenus=[dict(active=0, buttons=dropdowns, x=1.05, xanchor='left', y=1.15, yanchor='top')],
+        title=f'Efficiency for {inverter_list[0]}',
+        xaxis_title='Time',
+        yaxis_title='Efficiency (%)',
+        height=600,
+        template='plotly_white'
     )
     return fig
 
@@ -284,7 +289,9 @@ def show_localized():
     elif tab == "Anomalies & Groupings":
         st.header("Anomalies & Groupings")
         df2 = detect_anomalies(df)
-        st.plotly_chart(anomaly_detect(df2), use_container_width=True)
+        # updated graphing logic
+        fig = anomaly_detect(df2)
+        st.plotly_chart(fig, use_container_width=True)
 
         anomalies = df2[df2["anomaly"]]
         if not anomalies.empty:
@@ -292,19 +299,14 @@ def show_localized():
             st.dataframe(anomalies[["TIME_STAMP", "Value"]])
 
         high, med_high, med_low, low, summary = grouping_data_with_summary(df2)
-
         st.subheader("🔋 High-Efficiency Inverters")
         st.dataframe(high)
-
         st.subheader("⚡ Medium-High Efficiency")
         st.dataframe(med_high)
-
         st.subheader("🔆 Medium-Low Efficiency")
         st.dataframe(med_low)
-
         st.subheader("🪫 Low-Efficiency Inverters")
         st.dataframe(low)
-
         st.markdown("### 📊 Inverter Performance Summary")
         st.json(summary)
 
@@ -317,10 +319,10 @@ def show_localized():
         fc, mse = run_forecast(df2)
 
         st.write(f"Mean Squared Error: {mse:.2f}")
-        fig, ax = plt.subplots(figsize=(8,4))
-        ax.plot(fc["time_index"], fc["Actual"],    label="Actual",    alpha=0.6)
-        ax.plot(fc["time_index"], fc["Predicted"], label="Predicted", alpha=0.8)
-        ax.set_xlabel("Time Index")
-        ax.set_ylabel("Value")
-        ax.legend()
-        st.pyplot(fig)
+        fig2, ax2 = plt.subplots(figsize=(8,4))
+        ax2.plot(fc["time_index"], fc["Actual"],    label="Actual",    alpha=0.6)
+        ax2.plot(fc["time_index"], fc["Predicted"], label="Predicted", alpha=0.8)
+        ax2.set_xlabel("Time Index")
+        ax2.set_ylabel("Value")
+        ax2.legend()
+        st.pyplot(fig2)
